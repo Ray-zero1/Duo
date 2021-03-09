@@ -93,22 +93,27 @@ hw_timer_t *timer1 = NULL;    // For measurement
 hw_timer_t *timer2 = NULL;    // For time adjustment
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
-void IRAM_ATTR onTimer(){
+void IRAM_ATTR onTimer1(){
   // Increment the counter and set the time of ISR
   portENTER_CRITICAL_ISR(&timerMux);
   timeCounter1++;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
-
+void IRAM_ATTR onTimer2(){
+  // Increment the counter and set the time of ISR
+  portENTER_CRITICAL_ISR(&timerMux);
+  timeCounter2++;
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
 
 void setup() {
    int error;
    uint8_t c;
 
   //シリアル通信初期化
-  Serial.begin(115200,);
+  Serial.begin(115200);
 //  Serial.begin(115200,SERIAL_8N1,RX_pin,TX_pin);
-//  Serial2.begin(9600,SERIAL_8N1,Wire_RX_pin,Wire_TX_pin);
+  Serial2.begin(9600,SERIAL_8N1,RX_pin,TX_pin);
  
   //I2C初期化
   Wire.begin(21,22);//I2Cを初期化
@@ -196,32 +201,37 @@ void setup() {
   myFile.println("Time\tPres\tTemp\tHum\tAlt\tA_x\tA_y\tA_z\tAan_x\tAan_y\tAan_z\tg_x\tg_y\tg_z\tLatitude\tLongitude\tAlt");
   myFile.close();
 
-//  timer1 = timerBegin(0, 80, true);
-//  timerAttachInterrupt(timer1, &onTimer, true);  // Attach onTimer function.
-//  timerAlarmWrite(timer1,1000000, true);  // Set alarm to call onTimer function every second (value in microseconds).
-//  timerAlarmEnable(timer1);  // Start an alarm
+  timer1 = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer1, &onTimer1, true);  // Attach onTimer function.
+  timerAlarmWrite(timer1,1000000, true);  // Set alarm to call onTimer function every second (value in microseconds).
+  timerAlarmEnable(timer1);  // Start an alarm
 
-//  timerAttachInterrupt(timer2, &onTimer, true);  // Attach onTimer function.
-//  timerAlarmWrite(timer2, 100000, true);  // Set alarm to call onTimer function every second (value in microseconds).
-//  timerAlarmEnable(timer2);  // Start an alarm
+  timer2 = timerBegin(1, 80, true);
+  timerAttachInterrupt(timer2, &onTimer2, true);  // Attach onTimer function.
+  timerAlarmWrite(timer2, 100000, true);  // Set alarm to call onTimer function every second (value in microseconds).
+  timerAlarmEnable(timer2);  // Start an alarm
 
   
 }
  
 void loop() {
-  int error;
+
+  if (timeCounter1 > 0) {
+    portENTER_CRITICAL(&timerMux);
+    timeCounter1--;
+    portEXIT_CRITICAL(&timerMux);
+    main_loop();
+  }
+} 
+
+void main_loop(){
+   int error;
   float dT;
   accel_t_gyro_union accel_t_gyro;
   int32_t  temp_cal;
   uint32_t humi_cal, pres_cal;
   float temp, humi, pres, altitude;
-//  if (timeCounter1 > 0) {
-//    portENTER_CRITICAL(&timerMux);
-//    timeCounter1--;
-//    portEXIT_CRITICAL(&timerMux);
-     
-
-  SD.begin(5);
+    SD.begin(5);
   myFile = SD.open(f_name,FILE_APPEND);
   //BME280測定条件設定(1回測定後、スリープモード)
   Wire.beginTransmission(BME280_ADDR);
@@ -284,7 +294,7 @@ void loop() {
   float gyro_y = accel_t_gyro.value.y_gyro / 131.0;
   float gyro_z = accel_t_gyro.value.z_gyro / 131.0;
 
-  myFile.print(timer);
+  myFile.print(timeCounter2);
   myFile.print("\t");
   myFile.print(pres);//「pres」をシリアルモニタに送信
   myFile.print("\t");
@@ -316,7 +326,7 @@ void loop() {
   myFile.print(gyro_z, 2);
   myFile.print("\t");
 
-  Serial.print(timer);
+  Serial.print(timeCounter2);
   Serial.print("\t");
   Serial.print(pres);//「pres」をシリアルモニタに送信
   Serial.print("\t");
@@ -369,11 +379,8 @@ void loop() {
  myFile.println("");
  myFile.close();
  Serial.println("");
-  }
-
-
-
-
+ 
+}
 
 //温度補正 関数
 int32_t BME280_compensate_T_int32(int32_t adc_T)
