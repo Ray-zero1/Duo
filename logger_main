@@ -84,7 +84,7 @@ typedef union accel_t_gyro_union {
   value;
 };
 
-const char* f_name = "/test.txt";
+const char* f_name = "/test.bin";
 File myFile;
 
 volatile int timeCounter1;
@@ -203,7 +203,7 @@ void setup() {
 
   timer1 = timerBegin(0, 80, true);
   timerAttachInterrupt(timer1, &onTimer1, true);  // Attach onTimer function.
-  timerAlarmWrite(timer1,1000000, true);  // Set alarm to call onTimer function every second (value in microseconds).
+  timerAlarmWrite(timer1,10000, true);  // Set alarm to call onTimer function every second (value in microseconds).
   timerAlarmEnable(timer1);  // Start an alarm
 
   timer2 = timerBegin(1, 80, true);
@@ -225,13 +225,13 @@ void loop() {
 } 
 
 void main_loop(){
-   int error;
+  int error;
   float dT;
   accel_t_gyro_union accel_t_gyro;
   int32_t  temp_cal;
   uint32_t humi_cal, pres_cal;
   float temp, humi, pres, altitude;
-    SD.begin(5);
+  SD.begin(5);
   myFile = SD.open(f_name,FILE_APPEND);
   //BME280測定条件設定(1回測定後、スリープモード)
   Wire.beginTransmission(BME280_ADDR);
@@ -292,40 +292,56 @@ void main_loop(){
   // 取得した角速度値を分解能で割って角速度(degrees per sec)に変換する
   float gyro_x = accel_t_gyro.value.x_gyro / 131.0;//FS_SEL_0 131 LSB / (°/s)
   float gyro_y = accel_t_gyro.value.y_gyro / 131.0;
-  float gyro_z = accel_t_gyro.value.z_gyro / 131.0;
-
-  myFile.print(timeCounter2);
-  myFile.print("\t");
-  myFile.print(pres);//「pres」をシリアルモニタに送信
-  myFile.print("\t");
-  myFile.print(temp);//「temp」をシリアルモニタに送信
-  myFile.print("\t");//文字列「°C 」をシリアルモニタに送信
-  myFile.print(humi);//「humi」をシリアルモニタに送信
-  myFile.print("\t");//文字列「%」をシリアルモニタに送信、改行
-  myFile.print(altitude);
-  myFile.print("\t");
-   
-  myFile.print(acc_x, 2);
-  myFile.print("\t");
-  myFile.print(acc_y, 2);
-  myFile.print("\t");
-  myFile.print(acc_z, 2);
-  myFile.print("\t");
+  float gyro_z = accel_t_gyro.value.z_gyro / 131.0;  
+  float data[15];
+  data[0]=pres;
+  data[1]=temp;
+  data[2]=humi;
+  data[3]=altitude;
+  data[4]=acc_x;
+  data[5]=acc_y;
+  data[6]=acc_z;
+  data[7]=gyro_x; 
+  data[8]=gyro_y;
+  data[9]=gyro_z;
+  data[10]=acc_x;
+  data[11]=acc_y;
+  data[12]=acc_z;
   
-  myFile.print(acc_angle_x, 2);
-  myFile.print("\t");
-  myFile.print(acc_angle_y, 2);
-  myFile.print("\t");
-  myFile.print(acc_angle_z, 2);
-  myFile.print("\t");
-  
-  myFile.print(gyro_x, 2);
-  myFile.print("\t");
-  myFile.print(gyro_y, 2);
-  myFile.print("\t");
-  myFile.print(gyro_z, 2);
-  myFile.print("\t");
+  myFile.write((byte*) data,4);
 
+//  myFile.print(timeCounter2);
+//  myFile.print("\t");
+//  myFile.print(pres);//「pres」をシリアルモニタに送信
+//  myFile.print("\t");
+//  myFile.print(temp);//「temp」をシリアルモニタに送信
+//  myFile.print("\t");//文字列「°C 」をシリアルモニタに送信
+//  myFile.print(humi);//「humi」をシリアルモニタに送信
+//  myFile.print("\t");//文字列「%」をシリアルモニタに送信、改行
+//  myFile.print(altitude);
+//  myFile.print("\t");
+  
+//  myFile.print(acc_x, 2);
+//  myFile.print("\t");
+//  myFile.print(acc_y, 2);
+//  myFile.print("\t");
+//  myFile.print(acc_z, 2);
+//  myFile.print("\t");
+  
+//  myFile.print(acc_angle_x, 2);
+//  myFile.print("\t");
+//  myFile.print(acc_angle_y, 2);
+//  myFile.print("\t");
+//  myFile.print(acc_angle_z, 2);
+//  myFile.print("\t");
+  
+//  myFile.print(gyro_x, 2);
+//  myFile.print("\t");
+//  myFile.print(gyro_y, 2);
+//  myFile.print("\t");
+//  myFile.print(gyro_z, 2);
+//  myFile.print("\t");
+  
   Serial.print(timeCounter2);
   Serial.print("\t");
   Serial.print(pres);//「pres」をシリアルモニタに送信
@@ -363,11 +379,15 @@ void main_loop(){
   char c = Serial2.read();
   gps.encode(c);
   if (gps.location.isUpdated()){ 
-    myFile.print(gps.location.lat(), 6);
-    myFile.print("\t"); 
-    myFile.print(gps.location.lng(), 6);
-    myFile.print("\t"); 
-    myFile.print(gps.altitude.meters());
+    data[13] = gps.location.lat();
+    data[14] = gps.location.lng();
+    data[15] = gps.altitude.meters();
+    myFile.write((byte*) data,6);
+ //   myFile.print(gps.location.lat(), 6);
+ //   myFile.print("\t"); 
+ //   myFile.print(gps.location.lng(), 6);
+ //   myFile.print("\t"); 
+ //   myFile.print(gps.altitude.meters());
     Serial.print(gps.location.lat(), 6);
     Serial.print("\t"); 
     Serial.print(gps.location.lng(), 6);
