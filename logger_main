@@ -11,14 +11,15 @@ unsigned long timer;
 #define CONFIG 0xF5
 #define CTRL_MEAS 0xF4
 #define CTRL_HUM 0xF2
-#define RX_pin 16
-#define TX_pin 17
-#define Wire_RX_pin 3
-#define Wire_TX_pin 1
+#define RX_pin 16 //GPS_RX
+#define TX_pin 17 //GPS_TX
+#define Wire_RX_pin 3 //無線機_RX
+#define Wire_TX_pin 1 //無線機_TX
 #define MPU6050_ACCEL_XOUT_H 0x3B  // R  
 #define MPU6050_WHO_AM_I     0x75  // R
 #define MPU6050_PWR_MGMT_1   0x6B  // R/W
 #define MPU6050_I2C_ADDRESS  0x68
+#define sampling_rate
 
 
 double SeaLevelPressure = 1016.8; //アメダスでその日の海面気圧を調べてください(hPa)
@@ -84,11 +85,11 @@ typedef union accel_t_gyro_union {
   value;
 };
 
-const char* f_name = "/test.bin";
+const char* f_name = "/rogger.csv"; 
 File myFile;
 
-volatile int timeCounter1;
-volatile int timeCounter2;
+volatile int timeCounter1; //stanbymode_timer
+volatile int timeCounter2; //flightmode_timer
 hw_timer_t *timer1 = NULL;    // For measurement
 hw_timer_t *timer2 = NULL;    // For time adjustment
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -99,6 +100,7 @@ void IRAM_ATTR onTimer1(){
   timeCounter1++;
   portEXIT_CRITICAL_ISR(&timerMux);
 }
+
 void IRAM_ATTR onTimer2(){
   // Increment the counter and set the time of ISR
   portENTER_CRITICAL_ISR(&timerMux);
@@ -110,9 +112,9 @@ void setup() {
    int error;
    uint8_t c;
 
-  //シリアル通信初期化
+//シリアル通信初期化
   Serial.begin(115200);
-//  Serial.begin(115200,SERIAL_8N1,RX_pin,TX_pin);
+// Serial.begin(115200,SERIAL_8N1,RX_pin,TX_pin);
   Serial2.begin(9600,SERIAL_8N1,RX_pin,TX_pin);
  
   //I2C初期化
@@ -123,6 +125,7 @@ void setup() {
   Wire.write(CONFIG);//動作設定
   Wire.write(0x00);//「単発測定」、「フィルタなし」、「SPI 4線式
   Wire.endTransmission();
+  
   //BME280測定条件設定
   Wire.beginTransmission(BME280_ADDR);
   Wire.write(CTRL_MEAS);//測定条件設定
@@ -159,7 +162,6 @@ void setup() {
   dig_P7 = ((int16_t)((dac[19] << 8) | dac[18]));
   dig_P8 = ((int16_t)((dac[21] << 8) | dac[20]));
   dig_P9 = ((int16_t)((dac[23] << 8) | dac[22]));
-
   dig_H1 = ((uint8_t)(dac[25]));
 
   Wire.beginTransmission(BME280_ADDR);
@@ -203,19 +205,18 @@ void setup() {
 
   timer1 = timerBegin(0, 80, true);
   timerAttachInterrupt(timer1, &onTimer1, true);  // Attach onTimer function.
-  timerAlarmWrite(timer1,10000, true);  // Set alarm to call onTimer function every second (value in microseconds).
+  timerAlarmWrite(timer1,1.0E6 / sampling_rate, true);  // Set alarm to call onTimer function every second (value in microseconds).
   timerAlarmEnable(timer1);  // Start an alarm
 
   timer2 = timerBegin(1, 80, true);
   timerAttachInterrupt(timer2, &onTimer2, true);  // Attach onTimer function.
-  timerAlarmWrite(timer2, 100000, true);  // Set alarm to call onTimer function every second (value in microseconds).
+  timerAlarmWrite(timer2, 1.0E6 / sampling_rate, true);  // Set alarm to call onTimer function every second (value in microseconds).
   timerAlarmEnable(timer2);  // Start an alarm
 
   
 }
  
 void loop() {
-
   if (timeCounter1 > 0) {
     portENTER_CRITICAL(&timerMux);
     timeCounter1--;
@@ -238,7 +239,7 @@ void main_loop(){
   Wire.write(CTRL_MEAS);//測定条件設定
   Wire.write(0x25);//「温度・気圧オーバーサンプリングx1」、「1回測定後、スリープモード」
   Wire.endTransmission();
-  delay(10);//10msec待機
+
 
   //測定データ取得
   Wire.beginTransmission(BME280_ADDR);
@@ -293,63 +294,47 @@ void main_loop(){
   float gyro_x = accel_t_gyro.value.x_gyro / 131.0;//FS_SEL_0 131 LSB / (°/s)
   float gyro_y = accel_t_gyro.value.y_gyro / 131.0;
   float gyro_z = accel_t_gyro.value.z_gyro / 131.0;  
-  float data[15];
-  data[0]=pres;
-  data[1]=temp;
-  data[2]=humi;
-  data[3]=altitude;
-  data[4]=acc_x;
-  data[5]=acc_y;
-  data[6]=acc_z;
-  data[7]=gyro_x; 
-  data[8]=gyro_y;
-  data[9]=gyro_z;
-  data[10]=acc_x;
-  data[11]=acc_y;
-  data[12]=acc_z;
   
-  myFile.write((byte*) data,4);
-
-//  myFile.print(timeCounter2);
-//  myFile.print("\t");
-//  myFile.print(pres);//「pres」をシリアルモニタに送信
-//  myFile.print("\t");
-//  myFile.print(temp);//「temp」をシリアルモニタに送信
-//  myFile.print("\t");//文字列「°C 」をシリアルモニタに送信
-//  myFile.print(humi);//「humi」をシリアルモニタに送信
-//  myFile.print("\t");//文字列「%」をシリアルモニタに送信、改行
-//  myFile.print(altitude);
-//  myFile.print("\t");
+  myFile.print(timeCounter2);
+  myFile.print(",");
+  myFile.print(pres);//「pres」をシリアルモニタに送信
+  myFile.print(",");
+  myFile.print(temp);//「temp」をシリアルモニタに送信
+  myFile.print(",");//文字列「°C 」をシリアルモニタに送信
+  myFile.print(humi);//「humi」をシリアルモニタに送信
+  myFile.print(",");//文字列「%」をシリアルモニタに送信、改行
+  myFile.print(altitude);
+  myFile.print(",");
   
-//  myFile.print(acc_x, 2);
-//  myFile.print("\t");
-//  myFile.print(acc_y, 2);
-//  myFile.print("\t");
-//  myFile.print(acc_z, 2);
-//  myFile.print("\t");
+  myFile.print(acc_x, 2);
+  myFile.print(",");
+  myFile.print(acc_y, 2);
+  myFile.print(",");
+  myFile.print(acc_z, 2);
+  myFile.print(",");
   
-//  myFile.print(acc_angle_x, 2);
-//  myFile.print("\t");
-//  myFile.print(acc_angle_y, 2);
-//  myFile.print("\t");
-//  myFile.print(acc_angle_z, 2);
-//  myFile.print("\t");
+  myFile.print(acc_angle_x, 2);
+  myFile.print(",");
+  myFile.print(acc_angle_y, 2);
+  myFile.print(",");
+  myFile.print(acc_angle_z, 2);
+  myFile.print(",");
   
-//  myFile.print(gyro_x, 2);
-//  myFile.print("\t");
-//  myFile.print(gyro_y, 2);
-//  myFile.print("\t");
-//  myFile.print(gyro_z, 2);
-//  myFile.print("\t");
-  
+  myFile.print(gyro_x, 2);
+  myFile.print(",");
+  myFile.print(gyro_y, 2);
+  myFile.print(",");
+  myFile.print(gyro_z, 2);
+  myFile.print(",");
+ 
   Serial.print(timeCounter2);
   Serial.print("\t");
-  Serial.print(pres);//「pres」をシリアルモニタに送信
+  Serial.print(pres);
   Serial.print("\t");
-  Serial.print(temp);//「temp」をシリアルモニタに送信
-  Serial.print("\t");//文字列「°C 」をシリアルモニタに送信
-  Serial.print(humi);//「humi」をシリアルモニタに送信
-  Serial.print("\t");//文字列「%」をシリアルモニタに送信、改行
+  Serial.print(temp);
+  Serial.print("\t");
+  Serial.print(humi);
+  Serial.print("\t");
   Serial.print(altitude);
   Serial.print("\t");
   
@@ -379,21 +364,16 @@ void main_loop(){
   char c = Serial2.read();
   gps.encode(c);
   if (gps.location.isUpdated()){ 
-    data[13] = gps.location.lat();
-    data[14] = gps.location.lng();
-    data[15] = gps.altitude.meters();
-    myFile.write((byte*) data,6);
- //   myFile.print(gps.location.lat(), 6);
- //   myFile.print("\t"); 
- //   myFile.print(gps.location.lng(), 6);
- //   myFile.print("\t"); 
- //   myFile.print(gps.altitude.meters());
+    myFile.print(gps.location.lat(), 6);
+    myFile.print(","); 
+    myFile.print(gps.location.lng(), 6);
+    myFile.print(","); 
+    myFile.print(gps.altitude.meters());
     Serial.print(gps.location.lat(), 6);
     Serial.print("\t"); 
     Serial.print(gps.location.lng(), 6);
     Serial.print("\t"); 
     Serial.print(gps.altitude.meters());
-    
   }
  }
  myFile.println("");
